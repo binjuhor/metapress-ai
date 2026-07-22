@@ -53,15 +53,16 @@ final class MetaPress_AI_Plugin {
 			$post = get_post( $post_id );
 			if ( $post && current_user_can( 'edit_post', $post_id ) && in_array( $post->post_type, $settings['post_types'], true ) ) $allowed[] = $post_id;
 		}
-		$job = wp_generate_password( 20, false, false );
-		set_transient( 'metapress_ai_job_' . get_current_user_id() . '_' . $job, $allowed, HOUR_IN_SECONDS );
+		$job = strtolower( wp_generate_password( 20, false, false ) );
+		update_user_meta( get_current_user_id(), $this->job_meta_key( $job ), array( 'ids' => $allowed, 'created' => time() ) );
 		return add_query_arg( array( 'page' => 'metapress-ai-bulk', 'job' => $job ), admin_url( 'tools.php' ) );
 	}
 
 	public function render_bulk_page() {
 		$job = isset( $_GET['job'] ) ? sanitize_key( wp_unslash( $_GET['job'] ) ) : '';
-		$ids = get_transient( 'metapress_ai_job_' . get_current_user_id() . '_' . $job );
-		if ( ! is_array( $ids ) ) $ids = array();
+		$job_data = get_user_meta( get_current_user_id(), $this->job_meta_key( $job ), true );
+		$ids = isset( $job_data['ids'], $job_data['created'] ) && ( time() - absint( $job_data['created'] ) ) < HOUR_IN_SECONDS ? (array) $job_data['ids'] : array();
+		if ( ! $ids && $job ) delete_user_meta( get_current_user_id(), $this->job_meta_key( $job ) );
 		echo '<div class="wrap"><h1>' . esc_html__( 'MetaPress AI bulk generation', 'metapress-ai' ) . '</h1>';
 		if ( ! $ids ) {
 			echo '<div class="notice notice-error"><p>' . esc_html__( 'This bulk job is empty or has expired.', 'metapress-ai' ) . '</p></div></div>';
@@ -161,8 +162,9 @@ final class MetaPress_AI_Plugin {
 
 	public function bulk_item( WP_REST_Request $request ) {
 		$post_id = $request->get_param( 'post_id' );
-		$job_key = 'metapress_ai_job_' . get_current_user_id() . '_' . $request->get_param( 'job' );
-		$ids = get_transient( $job_key );
+		$job_key = $this->job_meta_key( $request->get_param( 'job' ) );
+		$job_data = get_user_meta( get_current_user_id(), $job_key, true );
+		$ids = isset( $job_data['ids'], $job_data['created'] ) && ( time() - absint( $job_data['created'] ) ) < HOUR_IN_SECONDS ? (array) $job_data['ids'] : array();
 		if ( ! is_array( $ids ) || ! in_array( $post_id, $ids, true ) ) return new WP_Error( 'metapress_ai_invalid_job', __( 'This item is not part of the bulk job.', 'metapress-ai' ), array( 'status' => 403 ) );
 		$post = get_post( $post_id );
 		$settings = MetaPress_AI_Settings::get();
@@ -171,7 +173,12 @@ final class MetaPress_AI_Plugin {
 		if ( is_wp_error( $result ) ) return $result;
 		$this->save_metadata( $post_id, $result[0] );
 		$ids = array_values( array_diff( $ids, array( $post_id ) ) );
-		if ( $ids ) set_transient( $job_key, $ids, HOUR_IN_SECONDS ); else delete_transient( $job_key );
+		if ( $ids ) {
+			$job_data['ids'] = $ids;
+			update_user_meta( get_current_user_id(), $job_key, $job_data );
+		} else {
+			delete_user_meta( get_current_user_id(), $job_key );
+		}
 		return rest_ensure_response( array( 'post_id' => $post_id, 'title' => get_the_title( $post_id ), 'edit_url' => get_edit_post_link( $post_id, 'raw' ) ) );
 	}
 
@@ -216,5 +223,9 @@ final class MetaPress_AI_Plugin {
 			'focus_keyphrase' => __( 'Focus keyphrase', 'metapress-ai' ), 'seo_title' => __( 'SEO title', 'metapress-ai' ), 'meta_description' => __( 'Meta description', 'metapress-ai' ), 'og_title' => __( 'Open Graph title', 'metapress-ai' ), 'og_description' => __( 'Open Graph description', 'metapress-ai' ), 'twitter_title' => __( 'X/Twitter title', 'metapress-ai' ), 'twitter_description' => __( 'X/Twitter description', 'metapress-ai' ),
 		);
 		return $labels[ $field ];
+	}
+
+	private function job_meta_key( $job ) {
+		return '_metapress_ai_bulk_job_' . sanitize_key( $job );
 	}
 }
