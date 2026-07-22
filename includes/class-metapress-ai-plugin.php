@@ -28,10 +28,49 @@ final class MetaPress_AI_Plugin {
 		add_action( 'save_post', array( $this, 'save_post' ), 20, 2 );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_editor_assets' ) );
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+		$settings = MetaPress_AI_Settings::get();
+		foreach ( $settings['post_types'] as $post_type ) {
+			add_filter( 'bulk_actions-edit-' . $post_type, array( $this, 'register_bulk_action' ) );
+			add_filter( 'handle_bulk_actions-edit-' . $post_type, array( $this, 'handle_bulk_action' ), 10, 3 );
+		}
 	}
 
 	public function admin_menu() {
 		add_options_page( __( 'MetaPress AI', 'metapress-ai' ), __( 'MetaPress AI', 'metapress-ai' ), 'manage_options', 'metapress-ai', array( 'MetaPress_AI_Settings', 'render_page' ) );
+		add_management_page( __( 'MetaPress AI bulk generation', 'metapress-ai' ), __( 'MetaPress AI bulk generation', 'metapress-ai' ), 'edit_posts', 'metapress-ai-bulk', array( $this, 'render_bulk_page' ) );
+	}
+
+	public function register_bulk_action( $actions ) {
+		$actions['metapress_ai_generate'] = __( 'Generate SEO metadata with AI', 'metapress-ai' );
+		return $actions;
+	}
+
+	public function handle_bulk_action( $redirect_url, $action, $post_ids ) {
+		if ( 'metapress_ai_generate' !== $action ) return $redirect_url;
+		$settings = MetaPress_AI_Settings::get();
+		$allowed = array();
+		foreach ( array_map( 'absint', $post_ids ) as $post_id ) {
+			$post = get_post( $post_id );
+			if ( $post && current_user_can( 'edit_post', $post_id ) && in_array( $post->post_type, $settings['post_types'], true ) ) $allowed[] = $post_id;
+		}
+		$job = wp_generate_password( 20, false, false );
+		set_transient( 'metapress_ai_job_' . get_current_user_id() . '_' . $job, $allowed, HOUR_IN_SECONDS );
+		return add_query_arg( array( 'page' => 'metapress-ai-bulk', 'job' => $job ), admin_url( 'tools.php' ) );
+	}
+
+	public function render_bulk_page() {
+		$job = isset( $_GET['job'] ) ? sanitize_key( wp_unslash( $_GET['job'] ) ) : '';
+		$ids = get_transient( 'metapress_ai_job_' . get_current_user_id() . '_' . $job );
+		if ( ! is_array( $ids ) ) $ids = array();
+		echo '<div class="wrap"><h1>' . esc_html__( 'MetaPress AI bulk generation', 'metapress-ai' ) . '</h1>';
+		if ( ! $ids ) {
+			echo '<div class="notice notice-error"><p>' . esc_html__( 'This bulk job is empty or has expired.', 'metapress-ai' ) . '</p></div></div>';
+			return;
+		}
+		printf( '<p>%s</p><div class="metapress-ai-progress"><div id="metapress-ai-progress-bar"></div></div><p id="metapress-ai-bulk-status"></p><ol id="metapress-ai-bulk-results"></ol></div>', esc_html( sprintf( _n( '%d selected item will be processed.', '%d selected items will be processed.', count( $ids ), 'metapress-ai' ), count( $ids ) ) ) );
+		wp_enqueue_style( 'metapress-ai-editor', METAPRESS_AI_URL . 'assets/editor.css', array(), METAPRESS_AI_VERSION );
+		wp_enqueue_script( 'metapress-ai-bulk', METAPRESS_AI_URL . 'assets/bulk.js', array(), METAPRESS_AI_VERSION, true );
+		wp_localize_script( 'metapress-ai-bulk', 'MetaPressAIBulk', array( 'endpoint' => esc_url_raw( rest_url( 'metapress-ai/v1/bulk-item' ) ), 'nonce' => wp_create_nonce( 'wp_rest' ), 'job' => $job, 'ids' => array_values( $ids ) ) );
 	}
 
 	public function add_meta_boxes() {
@@ -46,7 +85,7 @@ final class MetaPress_AI_Plugin {
 		if ( ! defined( 'WPSEO_VERSION' ) ) {
 			echo '<div class="notice notice-warning inline"><p>' . esc_html__( 'Yoast SEO is not active. Generated values can be saved, but MetaPress AI will not output frontend tags by itself.', 'metapress-ai' ) . '</p></div>';
 		}
-		echo '<p>' . esc_html__( 'Generate three editable SEO and social metadata sets. Content is sent to OpenAI only when you click Generate.', 'metapress-ai' ) . '</p>';
+		echo '<p>' . esc_html__( 'Generate three editable SEO and social metadata sets. Content is sent to the active AI provider only when you click Generate.', 'metapress-ai' ) . '</p>';
 		echo '<p><button type="button" class="button button-primary" id="metapress-ai-generate">' . esc_html__( 'Generate suggestions', 'metapress-ai' ) . '</button> <span class="spinner" id="metapress-ai-spinner"></span></p>';
 		echo '<div id="metapress-ai-message" role="status" aria-live="polite"></div><div id="metapress-ai-suggestions"></div>';
 		echo '<div class="metapress-ai-fields">';
@@ -89,6 +128,12 @@ final class MetaPress_AI_Plugin {
 				'focus_keyphrase' => array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
 			),
 		) );
+		register_rest_route( 'metapress-ai/v1', '/bulk-item', array(
+			'methods' => WP_REST_Server::CREATABLE,
+			'permission_callback' => function ( $request ) { $post_id = absint( $request->get_param( 'post_id' ) ); return $post_id && current_user_can( 'edit_post', $post_id ); },
+			'callback' => array( $this, 'bulk_item' ),
+			'args' => array( 'post_id' => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ), 'job' => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_key' ) ),
+		) );
 	}
 
 	public function generate( WP_REST_Request $request ) {
@@ -102,8 +147,24 @@ final class MetaPress_AI_Plugin {
 			return new WP_Error( 'metapress_ai_rate_limit', __( 'Please wait a few seconds before generating again.', 'metapress-ai' ), array( 'status' => 429 ) );
 		}
 		set_transient( $rate_key, 1, 5 );
-		$result = ( new MetaPress_AI_OpenAI_Client() )->generate( $post, $request->get_param( 'focus_keyphrase' ) );
+		$result = ( new MetaPress_AI_Provider_Client() )->generate( $post, $request->get_param( 'focus_keyphrase' ) );
 		return is_wp_error( $result ) ? $result : rest_ensure_response( array( 'suggestions' => $result ) );
+	}
+
+	public function bulk_item( WP_REST_Request $request ) {
+		$post_id = $request->get_param( 'post_id' );
+		$job_key = 'metapress_ai_job_' . get_current_user_id() . '_' . $request->get_param( 'job' );
+		$ids = get_transient( $job_key );
+		if ( ! is_array( $ids ) || ! in_array( $post_id, $ids, true ) ) return new WP_Error( 'metapress_ai_invalid_job', __( 'This item is not part of the bulk job.', 'metapress-ai' ), array( 'status' => 403 ) );
+		$post = get_post( $post_id );
+		$settings = MetaPress_AI_Settings::get();
+		if ( ! $post || ! in_array( $post->post_type, $settings['post_types'], true ) ) return new WP_Error( 'metapress_ai_invalid_post', __( 'This content is no longer available or enabled.', 'metapress-ai' ), array( 'status' => 400 ) );
+		$result = ( new MetaPress_AI_Provider_Client() )->generate( $post, get_post_meta( $post_id, '_yoast_wpseo_focuskw', true ) );
+		if ( is_wp_error( $result ) ) return $result;
+		$this->save_metadata( $post_id, $result[0] );
+		$ids = array_values( array_diff( $ids, array( $post_id ) ) );
+		if ( $ids ) set_transient( $job_key, $ids, HOUR_IN_SECONDS ); else delete_transient( $job_key );
+		return rest_ensure_response( array( 'post_id' => $post_id, 'title' => get_the_title( $post_id ), 'edit_url' => get_edit_post_link( $post_id, 'raw' ) ) );
 	}
 
 	public function save_post( $post_id, $post ) {
@@ -118,8 +179,12 @@ final class MetaPress_AI_Plugin {
 			return;
 		}
 		$submitted = (array) wp_unslash( $_POST['metapress_ai'] );
+		$this->save_metadata( $post_id, $submitted );
+	}
+
+	private function save_metadata( $post_id, $values ) {
 		foreach ( $this->fields as $field => $meta_key ) {
-			$value = isset( $submitted[ $field ] ) ? sanitize_text_field( $submitted[ $field ] ) : '';
+			$value = isset( $values[ $field ] ) ? sanitize_text_field( $values[ $field ] ) : '';
 			if ( '' === $value ) {
 				delete_post_meta( $post_id, $meta_key );
 			} else {

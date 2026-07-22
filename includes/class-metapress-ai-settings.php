@@ -20,10 +20,6 @@ final class MetaPress_AI_Settings {
 	}
 
 	public static function get() {
-		return wp_parse_args( (array) get_option( 'metapress_ai_settings', array() ), self::defaults() );
-	}
-
-	public static function get() {
 		$stored = (array) get_option( 'metapress_ai_settings', array() );
 		$defaults = self::defaults();
 		$settings = wp_parse_args( $stored, $defaults );
@@ -99,7 +95,7 @@ final class MetaPress_AI_Settings {
 		?>
 		<div class="wrap">
 			<h1><?php esc_html_e( 'MetaPress AI', 'metapress-ai' ); ?></h1>
-			<p><?php esc_html_e( 'Post content is sent to OpenAI only when an authorized editor clicks Generate. Review all suggestions before publishing.', 'metapress-ai' ); ?></p>
+			<p><?php esc_html_e( 'Post content is sent to the active AI provider only when an authorized editor starts generation. Review individual suggestions before publishing; bulk generation applies the first validated suggestion.', 'metapress-ai' ); ?></p>
 			<form action="options.php" method="post">
 				<?php settings_fields( 'metapress_ai' ); do_settings_sections( 'metapress-ai' ); submit_button(); ?>
 			</form>
