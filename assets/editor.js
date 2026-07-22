@@ -52,11 +52,20 @@
 		fetch(MetaPressAI.endpoint, {
 			method: 'POST',
 			credentials: 'same-origin',
-			headers: {'Content-Type': 'application/json', 'X-WP-Nonce': MetaPressAI.nonce},
+			headers: {'Accept': 'application/json', 'Content-Type': 'application/json', 'X-WP-Nonce': MetaPressAI.nonce},
 			body: JSON.stringify({post_id: MetaPressAI.postId, focus_keyphrase: document.getElementById('metapress-ai-focus_keyphrase').value})
 		}).then(function (response) {
-			return response.json().then(function (data) {
-				if (!response.ok) throw new Error(data.message || 'Generation failed.');
+			return response.text().then(function (body) {
+				var data;
+				try {
+					data = JSON.parse(body);
+				} catch (error) {
+					if (response.status === 401 || response.status === 403 || /<!doctype|<html/i.test(body)) {
+						throw new Error('WordPress returned an HTML page (HTTP ' + response.status + '). Refresh this editor and sign in again. If it happens after waiting, the web server timed out while contacting the AI provider.');
+					}
+					throw new Error('The server returned an invalid response (HTTP ' + response.status + '). Check the WordPress and PHP error logs.');
+				}
+				if (!response.ok) throw new Error(data.message || 'Generation failed (HTTP ' + response.status + ').');
 				return data;
 			});
 		}).then(function (data) {

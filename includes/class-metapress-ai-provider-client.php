@@ -25,7 +25,7 @@ final class MetaPress_AI_Provider_Client {
 			return $request;
 		}
 
-		$response = wp_remote_post( $request['url'], array( 'timeout' => 90, 'headers' => $request['headers'], 'body' => wp_json_encode( $request['body'] ) ) );
+		$response = wp_remote_post( $request['url'], array( 'timeout' => 45, 'headers' => $request['headers'], 'body' => wp_json_encode( $request['body'] ) ) );
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
