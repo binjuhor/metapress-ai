@@ -8,6 +8,8 @@
 	var container = document.getElementById('metapress-ai-suggestions');
 	var message = document.getElementById('metapress-ai-message');
 	var spinner = document.getElementById('metapress-ai-spinner');
+	var fieldsPanel = document.getElementById('metapress-ai-fields');
+	var toggleFields = document.getElementById('metapress-ai-toggle-fields');
 
 	function updateCounts() {
 		document.querySelectorAll('.metapress-ai-count').forEach(function (counter) {
@@ -32,12 +34,36 @@
 
 		container.querySelectorAll('.metapress-ai-apply').forEach(function (applyButton, index) {
 			applyButton.addEventListener('click', function () {
+				applyButton.disabled = true;
+				message.textContent = MetaPressAI.labels.applying;
 				fields.forEach(function (field) {
 					document.getElementById('metapress-ai-' + field).value = suggestions[index][field] || '';
 				});
-				message.textContent = MetaPressAI.labels.applied;
 				updateCounts();
+				fetch(MetaPressAI.applyEndpoint, {
+					method: 'POST', credentials: 'same-origin',
+					headers: {'Accept': 'application/json', 'Content-Type': 'application/json', 'X-WP-Nonce': MetaPressAI.nonce},
+					body: JSON.stringify({post_id: MetaPressAI.postId, metadata: suggestions[index]})
+				}).then(function (response) {
+					return response.text().then(function (body) {
+						var data; try { data = JSON.parse(body); } catch (error) { throw new Error('The server returned an invalid response (HTTP ' + response.status + ').'); }
+						if (!response.ok) throw new Error(data.message || 'Applying metadata failed.'); return data;
+					});
+				}).then(function () {
+					message.textContent = MetaPressAI.labels.applied + ' ';
+					var refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'button button-link'; refresh.textContent = MetaPressAI.labels.refresh;
+					refresh.addEventListener('click', function () { window.location.reload(); }); message.appendChild(refresh);
+				}).catch(function (error) { message.textContent = error.message; }).finally(function () { applyButton.disabled = false; });
 			});
+		});
+	}
+
+	if (toggleFields && fieldsPanel) {
+		toggleFields.addEventListener('click', function () {
+			var opening = fieldsPanel.hidden;
+			fieldsPanel.hidden = !opening;
+			toggleFields.setAttribute('aria-expanded', opening ? 'true' : 'false');
+			toggleFields.textContent = opening ? MetaPressAI.labels.hideFields : MetaPressAI.labels.showFields;
 		});
 	}
 

@@ -1,4 +1,5 @@
 .metapress-ai-card{background:#fff;border:1px solid #dcdcde;border-radius:4px;display:inline-block;margin:0 12px 12px 0;padding:12px;vertical-align:top;width:calc(33.333% - 36px)}
 .metapress-ai-card h4{margin-top:0}.metapress-ai-count{color:#646970;display:block;text-align:right}.metapress-ai-fields{border-top:1px solid #dcdcde;margin-top:8px;padding-top:8px}#metapress-ai-message{margin:8px 0}
+.metapress-ai-fields[hidden]{display:none}#metapress-ai-message .button-link{margin-left:4px;padding:0;vertical-align:baseline}
 @media(max-width:782px){.metapress-ai-card{display:block;width:auto}}
 .metapress-ai-progress{background:#dcdcde;height:20px;max-width:800px}.metapress-ai-progress div{background:#2271b1;height:100%;transition:width .2s;width:0}.metapress-ai-bulk-results .error,#metapress-ai-bulk-results .error{color:#b32d2e}.metapress-ai-bulk-results .success,#metapress-ai-bulk-results .success{color:#008a20}

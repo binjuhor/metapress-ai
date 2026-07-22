@@ -88,7 +88,8 @@ final class MetaPress_AI_Plugin {
 		echo '<p>' . esc_html__( 'Generate three editable SEO and social metadata sets. Content is sent to the active AI provider only when you click Generate.', 'metapress-ai' ) . '</p>';
 		echo '<p><button type="button" class="button button-primary" id="metapress-ai-generate">' . esc_html__( 'Generate suggestions', 'metapress-ai' ) . '</button> <span class="spinner" id="metapress-ai-spinner"></span></p>';
 		echo '<div id="metapress-ai-message" role="status" aria-live="polite"></div><div id="metapress-ai-suggestions"></div>';
-		echo '<div class="metapress-ai-fields">';
+		echo '<p><button type="button" class="button button-link" id="metapress-ai-toggle-fields" aria-expanded="false">' . esc_html__( 'Show/edit metadata fields', 'metapress-ai' ) . '</button></p>';
+		echo '<div class="metapress-ai-fields" id="metapress-ai-fields" hidden>';
 		foreach ( $this->fields as $field => $meta_key ) {
 			$value = get_post_meta( $post->ID, $meta_key, true );
 			printf( '<p><label for="metapress-ai-%1$s"><strong>%2$s</strong></label><br><textarea id="metapress-ai-%1$s" name="metapress_ai[%1$s]" rows="2" class="widefat">%3$s</textarea><small class="metapress-ai-count" data-for="metapress-ai-%1$s"></small></p>', esc_attr( $field ), esc_html( $this->label( $field ) ), esc_textarea( $value ) );
@@ -109,9 +110,10 @@ final class MetaPress_AI_Plugin {
 		wp_enqueue_script( 'metapress-ai-editor', METAPRESS_AI_URL . 'assets/editor.js', array(), METAPRESS_AI_VERSION, true );
 		wp_localize_script( 'metapress-ai-editor', 'MetaPressAI', array(
 			'endpoint' => esc_url_raw( rest_url( 'metapress-ai/v1/generate' ) ),
+			'applyEndpoint' => esc_url_raw( rest_url( 'metapress-ai/v1/apply' ) ),
 			'nonce'    => wp_create_nonce( 'wp_rest' ),
 			'postId'   => isset( $_GET['post'] ) ? absint( $_GET['post'] ) : 0,
-			'labels'   => array( 'apply' => __( 'Apply this set', 'metapress-ai' ), 'generating' => __( 'Generating metadata…', 'metapress-ai' ), 'applied' => __( 'Suggestion applied. Review it, then update the post to save.', 'metapress-ai' ) ),
+			'labels'   => array( 'apply' => __( 'Apply this set to Yoast', 'metapress-ai' ), 'applying' => __( 'Applying metadata to Yoast…', 'metapress-ai' ), 'generating' => __( 'Generating metadata…', 'metapress-ai' ), 'applied' => __( 'Metadata saved to Yoast.', 'metapress-ai' ), 'refresh' => __( 'Refresh the page to see it in the Yoast metabox', 'metapress-ai' ), 'showFields' => __( 'Show/edit metadata fields', 'metapress-ai' ), 'hideFields' => __( 'Hide metadata fields', 'metapress-ai' ) ),
 		) );
 	}
 
@@ -133,6 +135,12 @@ final class MetaPress_AI_Plugin {
 			'permission_callback' => function ( $request ) { $post_id = absint( $request->get_param( 'post_id' ) ); return $post_id && current_user_can( 'edit_post', $post_id ); },
 			'callback' => array( $this, 'bulk_item' ),
 			'args' => array( 'post_id' => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ), 'job' => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_key' ) ),
+		) );
+		register_rest_route( 'metapress-ai/v1', '/apply', array(
+			'methods' => WP_REST_Server::CREATABLE,
+			'permission_callback' => function ( $request ) { $post_id = absint( $request->get_param( 'post_id' ) ); return $post_id && current_user_can( 'edit_post', $post_id ); },
+			'callback' => array( $this, 'apply_metadata' ),
+			'args' => array( 'post_id' => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ), 'metadata' => array( 'required' => true, 'type' => 'object' ) ),
 		) );
 	}
 
@@ -165,6 +173,16 @@ final class MetaPress_AI_Plugin {
 		$ids = array_values( array_diff( $ids, array( $post_id ) ) );
 		if ( $ids ) set_transient( $job_key, $ids, HOUR_IN_SECONDS ); else delete_transient( $job_key );
 		return rest_ensure_response( array( 'post_id' => $post_id, 'title' => get_the_title( $post_id ), 'edit_url' => get_edit_post_link( $post_id, 'raw' ) ) );
+	}
+
+	public function apply_metadata( WP_REST_Request $request ) {
+		$post_id = $request->get_param( 'post_id' );
+		$post = get_post( $post_id );
+		$settings = MetaPress_AI_Settings::get();
+		if ( ! $post || ! in_array( $post->post_type, $settings['post_types'], true ) ) return new WP_Error( 'metapress_ai_invalid_post', __( 'This content is no longer available or enabled.', 'metapress-ai' ), array( 'status' => 400 ) );
+		$metadata = (array) $request->get_param( 'metadata' );
+		$this->save_metadata( $post_id, $metadata );
+		return rest_ensure_response( array( 'saved' => true, 'post_id' => $post_id ) );
 	}
 
 	public function save_post( $post_id, $post ) {
