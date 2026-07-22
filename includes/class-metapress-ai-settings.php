@@ -11,7 +11,7 @@ final class MetaPress_AI_Settings {
 				'deepseek' => array( 'api_key' => '', 'model' => 'deepseek-v4-flash', 'base_url' => '' ),
 				'gemini'   => array( 'api_key' => '', 'model' => 'gemini-3.5-flash', 'base_url' => '' ),
 				'claude'   => array( 'api_key' => '', 'model' => 'claude-haiku-4-5-20251001', 'base_url' => '' ),
-				'ollama'   => array( 'api_key' => '', 'model' => 'gpt-oss', 'base_url' => 'http://localhost:11434' ),
+				'ollama'   => array( 'api_key' => '', 'model' => 'gpt-oss', 'base_url' => 'https://ollama.com' ),
 			),
 			'post_types' => array( 'post', 'page' ),
 			'language'   => '',
@@ -117,9 +117,9 @@ final class MetaPress_AI_Settings {
 			$config = self::provider_config( $name );
 			$constant = 'METAPRESS_AI_' . strtoupper( $name ) . '_API_KEY';
 			$defined = defined( $constant ) && constant( $constant );
-			printf( '<tr><th>%s</th><td><input type="password" autocomplete="new-password" name="metapress_ai_settings[providers][%s][api_key]" value="" placeholder="%s" %s></td><td><input name="metapress_ai_settings[providers][%s][model]" value="%s"></td><td>%s</td></tr>', esc_html( $label ), esc_attr( $name ), esc_attr( $config['api_key'] ? __( 'Configured; leave blank to keep', 'metapress-ai' ) : ( 'ollama' === $name ? __( 'Not required', 'metapress-ai' ) : 'API key' ) ), disabled( $defined, true, false ), esc_attr( $name ), esc_attr( $config['model'] ), 'ollama' === $name ? '<input name="metapress_ai_settings[providers][ollama][base_url]" value="' . esc_attr( $config['base_url'] ) . '">' : '—' );
+			printf( '<tr><th>%s</th><td><input type="password" autocomplete="new-password" name="metapress_ai_settings[providers][%s][api_key]" value="" placeholder="%s" %s></td><td><input name="metapress_ai_settings[providers][%s][model]" value="%s"></td><td>%s</td></tr>', esc_html( $label ), esc_attr( $name ), esc_attr( $config['api_key'] ? __( 'Configured; leave blank to keep', 'metapress-ai' ) : ( 'ollama' === $name ? __( 'Required for Ollama Cloud', 'metapress-ai' ) : 'API key' ) ), disabled( $defined, true, false ), esc_attr( $name ), esc_attr( $config['model'] ), 'ollama' === $name ? '<input name="metapress_ai_settings[providers][ollama][base_url]" value="' . esc_attr( $config['base_url'] ) . '">' : '—' );
 		}
-		echo '</tbody></table><p class="description">' . esc_html__( 'Keys remain server-side. Ollama must be reachable from the WordPress server.', 'metapress-ai' ) . '</p>';
+		echo '</tbody></table><p class="description">' . esc_html__( 'Keys remain server-side. Use https://ollama.com with an API key for Ollama Cloud, or http://localhost:11434 for local Ollama.', 'metapress-ai' ) . '</p>';
 	}
 
 	public static function post_types_field() {

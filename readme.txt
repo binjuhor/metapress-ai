@@ -3,7 +3,7 @@ Contributors: binjuhor
 Tags: seo, ai, yoast, open graph, metadata
 Requires at least: 6.5
 Requires PHP: 7.4
-Stable tag: 1.1.1
+Stable tag: 1.1.2
 License: MIT
 License URI: https://opensource.org/license/mit
 
@@ -25,6 +25,9 @@ Supported providers are OpenAI, DeepSeek, Google Gemini, Anthropic Claude, and O
 For production, API keys may be defined in wp-config.php as `METAPRESS_AI_OPENAI_API_KEY`, `METAPRESS_AI_DEEPSEEK_API_KEY`, `METAPRESS_AI_GEMINI_API_KEY`, or `METAPRESS_AI_CLAUDE_API_KEY`.
 
 == Changelog ==
+
+= 1.1.2 =
+* Add authenticated Ollama Cloud support and cloud-compatible JSON output mode.
 
 = 1.1.1 =
 * Report HTML, authentication, and upstream timeout responses clearly.

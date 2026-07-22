@@ -12,7 +12,8 @@ final class MetaPress_AI_Provider_Client {
 	public function generate( $post, $focus_keyphrase = '' ) {
 		$provider = $this->settings['provider'];
 		$config   = MetaPress_AI_Settings::provider_config( $provider );
-		if ( 'ollama' !== $provider && '' === $config['api_key'] ) {
+		$ollama_cloud = 'ollama' === $provider && false !== strpos( $config['base_url'], 'ollama.com' );
+		if ( ( 'ollama' !== $provider || $ollama_cloud ) && '' === $config['api_key'] ) {
 			return new WP_Error( 'metapress_ai_missing_key', sprintf( __( 'Configure the %s API key in Settings → MetaPress AI.', 'metapress-ai' ), MetaPress_AI_Settings::provider_label( $provider ) ), array( 'status' => 400 ) );
 		}
 
@@ -73,10 +74,13 @@ final class MetaPress_AI_Provider_Client {
 				if ( ! wp_http_validate_url( $url ) && 0 !== strpos( $url, 'http://localhost' ) && 0 !== strpos( $url, 'http://127.0.0.1' ) ) {
 					return new WP_Error( 'metapress_ai_invalid_url', __( 'The Ollama URL is invalid.', 'metapress-ai' ), array( 'status' => 400 ) );
 				}
+				$is_cloud = false !== strpos( $url, 'ollama.com' );
+				$headers = array( 'Content-Type' => 'application/json' );
+				if ( $is_cloud && $config['api_key'] ) $headers['Authorization'] = 'Bearer ' . $config['api_key'];
 				return array(
 					'url' => $url . '/api/chat',
-					'headers' => array( 'Content-Type' => 'application/json' ),
-					'body' => array( 'model' => $config['model'], 'messages' => array( array( 'role' => 'user', 'content' => $prompt ) ), 'stream' => false, 'format' => $schema ),
+					'headers' => $headers,
+					'body' => array( 'model' => $config['model'], 'messages' => array( array( 'role' => 'user', 'content' => $prompt ) ), 'stream' => false, 'format' => $is_cloud ? 'json' : $schema ),
 				);
 		}
 		return new WP_Error( 'metapress_ai_invalid_provider', __( 'The selected AI provider is not supported.', 'metapress-ai' ), array( 'status' => 400 ) );
